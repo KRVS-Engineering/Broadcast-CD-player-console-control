@@ -3,13 +3,20 @@
  * Converts dry contact to TCP commands for 3 different CD players (Play / Pause)
  * July 2022 - KW (Some code recycled from EAS switch project)
  * Based on OLIMEX ESP32-POE and the SSD1306 for status display
+ * The program started to change into a single remote for each player (was going to move from ethernet
+ * to serial) because the player would not do things like track up and pause.  A code work around was
+ * found and started to be implemented.  Next it was learned that track remain time could
+ * not be derived from the remote commands.  This put the project on infinate hold.
+ * 
+ * A code review would be appreciated though for future projects.
+ * 7/19/22 kw
  */
 
 //ETH Hardware Stuff
 #define ETH_CLK_MODE ETH_CLOCK_GPIO17_OUT 
 #include <ETH.h>
 
-// SSD1306 I2C Setup
+// SSD1306 I2C Setup --- PINS 13 and 16 RESERVED on OLIMEX32-POE
 #include <SSD1306Wire.h> // legacy include: `#include "SSD1306.h"
 SSD1306Wire display(0x3c, 13, 16, GEOMETRY_128_64 );  // (Address, SDA, SCL, Geometry) for SSD1306 OLED on ESP32-POE
 
@@ -36,16 +43,24 @@ String devicePlay = String("@02353\r"); // PLAY command
 String devicePause = String("@02348\r"); // PAUSE command
 
 // Variables for the Inturrupts
-struct Button { // create Button struct (probably overkill but may need more variables)
+struct buttonOne { // create Button struct (probably overkill but may need more variables)
   bool pressed;
 };
-Button button1 = {true}; // set initial state
+buttonOne button1 = {true}; // set initial state
+
+struct buttonTwo { // button for track up
+  bool pressed;
+};
+buttonTwo button2 = {false}; // set initial state
 
 
-
-void IRAM_ATTR buttonOne() { // -------- Setup Inturrupt Function -----------------
+void IRAM_ATTR buttonOne() { // -------- Setup Inturrupt Function for state -----------------
   button1.pressed = digitalRead(14);
   }
+
+void IRAM_ATTR buttonTwo() { // --------- Setup Inturrupt Function for track --------------
+  button2.pressed = digitalRead(15);
+}
 
 void WiFiEvent(WiFiEvent_t event) { // -------------- Network Voodoo -------------------
   switch (event) {
@@ -80,7 +95,7 @@ void WiFiEvent(WiFiEvent_t event) { // -------------- Network Voodoo -----------
   }
 }
 
-void playerOne() { // ----------- function for Player One ---------------------------
+void playerOne() { // ----------- function for Player One play/pause -----------------------
 
   if (button1.pressed == LOW) {
 
@@ -124,6 +139,33 @@ void playerOne() { // ----------- function for Player One ----------------------
   }
    
 }  
+void playerOneTrackUp() { // ----------- function to track Up and Pause -----------------
+
+    WiFiClient client;
+    if (!client.connect(deviceOneIp, deviceOneTcp)) {
+    Serial.println("connection failed");
+    return;
+    }
+    
+    client.printf("@02332\r", deviceOneIp); // Tack Number
+    
+    String response = client.readStringUntil('\n');
+    Serial.print(response);
+    Serial.println("  Track Up");
+    delay(10);
+    client.printf("@02348\r", deviceOneIp); // Pause
+    response = client.readStringUntil('\n');
+    Serial.print(response);
+    Serial.println("  Pause");
+    client.stop();
+
+    display.clear();
+    display.drawString(1, 40, String("Tk UP"));
+    display.display();
+    button2.pressed = false;
+        
+}
+
 
 void playerOneTrack() { // ----------- function to get track # ---------------------------
 
@@ -135,7 +177,8 @@ void playerOneTrack() { // ----------- function to get track # -----------------
     
     client.printf("@0?PCGp\r", deviceOneIp); // Tack Number
     String response = client.readStringUntil('\n');
-    Serial.println(response);
+    Serial.print(response);
+    Serial.println(  "track number");
     client.stop();
 
     String track =  response.substring(12,15);
@@ -179,6 +222,8 @@ void setup() {
 // ISR
   pinMode(14, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(14), buttonOne, CHANGE);
+  pinMode(15, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(15), buttonTwo, FALLING);
 
 // Some status info to the OLED
   display.clear();
@@ -203,6 +248,9 @@ void loop() {
   if (deviceOneLast != button1.pressed) {
     playerOne();
        
+  } else if (button2.pressed == true){
+      playerOneTrackUp();
+    
   } else {
     playerOneTrack();
     // do nothing... just keep looping waiting for a state change
