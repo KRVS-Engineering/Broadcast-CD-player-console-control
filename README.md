@@ -1,4 +1,10 @@
 # Broadcast-CD-player-console-control
+
+This project has been put on indefinate hold due to limitiations with the CD Player.
+(Unable to derive track remain time, only does entire disk) 7/19/22 kw
+
+--------------------------------------------------------------------------------------------
+
 Convert GPIO contact closure to TCP to start/stop broadcast CD players from console
 
 Professional CD players have remote ports on the back that can trigger start/stop commands.  These ports are tied into the on-air audio console so that when you turn on the "channel", the CD players start automatically.  Just reduces the number of things you have to physically do when hosting a show.  New CD players do not have this feature and have switched to RS-232 or TCP for their remote commands.  This project hopes to bridge the dry contact GPIO from our existing console to a TCP command via an ESP-32.
